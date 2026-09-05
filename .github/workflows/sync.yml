@@ -2,10 +2,8 @@ name: Sync LeetCode Solutions
 
 on:
   schedule:
-    # Runs every 6 hours
     - cron: '0 */6 * * *'
   workflow_dispatch:
-    # Allow manual trigger from GitHub UI
   push:
     branches: [main]
     paths:
@@ -38,17 +36,30 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Debug secrets
+        run: |
+          if [ -n "$LEETCODE_SESSION" ]; then
+            echo "LEETCODE_SESSION is set (${#LEETCODE_SESSION} chars)"
+          else
+            echo "ERROR: LEETCODE_SESSION is NOT set"
+          fi
+          if [ -n "$LEETCODE_CSRF_TOKEN" ]; then
+            echo "LEETCODE_CSRF_TOKEN is set (${#LEETCODE_CSRF_TOKEN} chars)"
+          else
+            echo "ERROR: LEETCODE_CSRF_TOKEN is NOT set"
+          fi
+        env:
+          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
+          LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+
       - name: Run sync
         env:
           LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
           LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
-        run: |
-          python sync.py --push --dir .
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        run: python -u sync.py --push --dir .
 
-      - name: Check for changes
+      - name: Push changes
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "Changes detected and committed"
-          else
-            echo "No new solutions to sync"
-          fi
+          git push origin main --force
