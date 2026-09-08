@@ -1,18 +1,18 @@
-# 61. Rotate List
+# 49. Group Anagrams
 
 [Medium](https://img.shields.io/badge/Medium-ffb800)
 
-**Link:** [Rotate List](https://leetcode.com/problems/rotate-list/)
+**Link:** [Group Anagrams](https://leetcode.com/problems/group-anagrams/)
 
 ## Tags
 
-`Linked List` | `Two Pointers`
+`Array` | `Hash Table` | `String` | `Sorting`
 
 ## Solutions
 
 | Language | Runtime | Memory |
 |----------|---------|--------|
-| python3 | 0 ms | 19.2 MB |
+| python3 | 32 ms | 26.2 MB |
 
 ---
 _Synced 2026-09-08 20:29_
