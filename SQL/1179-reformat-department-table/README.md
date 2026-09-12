@@ -1,18 +1,18 @@
-# 860. Lemonade Change
+# 1179. Reformat Department Table
 
 [Easy](https://img.shields.io/badge/Easy-b9d85c)
 
-**Link:** [Lemonade Change](https://leetcode.com/problems/lemonade-change/)
+**Link:** [Reformat Department Table](https://leetcode.com/problems/reformat-department-table/)
 
 ## Tags
 
-`Array` | `Greedy`
+`Database`
 
 ## Solutions
 
 | Language | Runtime | Memory |
 |----------|---------|--------|
-| python3 | 4 ms | 23.4 MB |
+| mysql | 553 ms | 0B |
 
 ---
 _Synced 2026-09-12 19:51_
