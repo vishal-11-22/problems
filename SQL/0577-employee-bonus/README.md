@@ -1,8 +1,8 @@
-# 584. Find Customer Referee
+# 577. Employee Bonus
 
 [Easy](https://img.shields.io/badge/Easy-b9d85c)
 
-**Link:** [Find Customer Referee](https://leetcode.com/problems/find-customer-referee/)
+**Link:** [Employee Bonus](https://leetcode.com/problems/employee-bonus/)
 
 ## Tags
 
@@ -12,7 +12,7 @@
 
 | Language | Runtime | Memory |
 |----------|---------|--------|
-| mysql | 561 ms | 0B |
+| mysql | 1434 ms | 0B |
 
 ---
 _Synced 2026-09-14 21:10_
