@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,30 +38,26 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Debug secrets
+      - name: Validate secrets
         run: |
-          if [ -n "$LEETCODE_SESSION" ]; then
-            echo "LEETCODE_SESSION is set (${#LEETCODE_SESSION} chars)"
-          else
-            echo "ERROR: LEETCODE_SESSION is NOT set"
+          if [ -z "$LEETCODE_SESSION" ]; then
+            echo "ERROR: LEETCODE_SESSION secret is not set"
+            exit 1
           fi
-          if [ -n "$LEETCODE_CSRF_TOKEN" ]; then
-            echo "LEETCODE_CSRF_TOKEN is set (${#LEETCODE_CSRF_TOKEN} chars)"
-          else
-            echo "ERROR: LEETCODE_CSRF_TOKEN is NOT set"
+          if [ -z "$LEETCODE_CSRF_TOKEN" ]; then
+            echo "ERROR: LEETCODE_CSRF_TOKEN secret is not set"
+            exit 1
           fi
+          echo "LEETCODE_SESSION: ${#LEETCODE_SESSION} chars"
+          echo "LEETCODE_CSRF_TOKEN: ${#LEETCODE_CSRF_TOKEN} chars"
         env:
           LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
           LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
 
-      - name: Run sync
+      - name: Sync solutions
         env:
           LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
           LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPO: ${{ github.repository }}
         run: python -u sync.py --push --dir .
-
-      - name: Push changes
-        run: |
-          git push origin main --force

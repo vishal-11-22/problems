@@ -107,9 +107,12 @@ def get_submission_code(session, csrf_token, sub_id):
     }"""
     data = gql(q, {"id": int(sub_id)}, session, csrf_token)
     d = data.get("submissionDetails")
-    if d and d.get("code"):
-        return {"code": d["code"], "runtime": d.get("runtimeDisplay", ""), "memory": d.get("memoryDisplay", "")}
-    return None
+    if not d:
+        return None
+    code = d.get("code") or d.get("sourceCode") or ""
+    if not code:
+        return None
+    return {"code": code, "runtime": d.get("runtimeDisplay", ""), "memory": d.get("memoryDisplay", "")}
 
 
 def is_sql(p):
@@ -193,9 +196,12 @@ def sync(base_path, lc_session, csrf, push=False, gh_token=None, gh_repo=None):
     try:
         d = gql("query { userStatus { username } }", {}, s, csrf)
         user = d.get("userStatus", {}).get("username", "")
-        print(f"  Logged in as: {user}")
-    except:
-        print("  Auth check failed, proceeding anyway...")
+        if user:
+            print(f"  Logged in as: {user}")
+        else:
+            print("  WARNING: Could not verify login, proceeding anyway...")
+    except Exception as e:
+        print(f"  WARNING: Auth check failed ({e}), proceeding anyway...")
 
     # Get ALL solved problems (1 API call)
     print("\n[2/5] Fetching solved problems...")
@@ -215,56 +221,57 @@ def sync(base_path, lc_session, csrf, push=False, gh_token=None, gh_repo=None):
         padded = str(pid).zfill(4)
         print(f"  [{i+1}/{total}] #{pid} {title}")
 
-        # Get problem details (tags, category) for SQL detection
-        details = get_problem_details(s, csrf, slug)
-        if details:
-            prob.update(details)
-
-        # Get accepted submissions
         try:
+            # Get problem details (tags, category) for SQL detection
+            details = get_problem_details(s, csrf, slug)
+            if details:
+                prob.update(details)
+
+            # Get accepted submissions
             acc = get_accepted_submissions(s, csrf, slug)
+
+            if not acc:
+                continue
+
+            # Latest per language
+            seen_lang = {}
+            for sub in acc:
+                lang = sub["lang"]
+                if lang not in seen_lang:
+                    seen_lang[lang] = sub
+
+            folder = base_path / ("SQL" if is_sql(prob) else "DSA") / f"{padded}-{slug}"
+            folder.mkdir(parents=True, exist_ok=True)
+            sols = {}
+            for lang, sub in seen_lang.items():
+                code_data = get_submission_code(s, csrf, sub["id"])
+                if code_data:
+                    ext = LANG_EXT.get(lang, lang)
+                    (folder / f"solution.{ext}").write_text(code_data["code"], encoding="utf-8")
+                    sols[lang] = code_data
+                    print(f"    {lang}: OK")
+                time.sleep(0.2)
+
+            if sols:
+                # Build problem dict for readme
+                readme_prob = {
+                    "questionFrontendId": pid,
+                    "title": title,
+                    "slug": slug,
+                    "difficulty": prob.get("difficulty"),
+                    "topicTags": prob.get("topicTags", []),
+                }
+                write_readme(folder / "README.md", readme_prob, sols)
+                if is_sql(prob):
+                    sql_count += 1
+                else:
+                    dsa_count += 1
+
+            time.sleep(0.3)
+
         except Exception as e:
-            print(f"    Error: {e}")
+            print(f"    ERROR: {e}")
             continue
-
-        if not acc:
-            continue
-
-        # Latest per language
-        seen_lang = {}
-        for sub in acc:
-            lang = sub["lang"]
-            if lang not in seen_lang:
-                seen_lang[lang] = sub
-
-        folder = base_path / ("SQL" if is_sql(prob) else "DSA") / f"{padded}-{slug}"
-        folder.mkdir(parents=True, exist_ok=True)
-        sols = {}
-        for lang, sub in seen_lang.items():
-            code_data = get_submission_code(s, csrf, sub["id"])
-            if code_data:
-                ext = LANG_EXT.get(lang, lang)
-                (folder / f"solution.{ext}").write_text(code_data["code"], encoding="utf-8")
-                sols[lang] = code_data
-                print(f"    {lang}: OK")
-            time.sleep(0.2)
-
-        if sols:
-            # Build problem dict for readme
-            readme_prob = {
-                "questionFrontendId": pid,
-                "title": title,
-                "slug": slug,
-                "difficulty": prob.get("difficulty"),
-                "topicTags": prob.get("topicTags", []),
-            }
-            write_readme(folder / "README.md", readme_prob, sols)
-            if is_sql(prob):
-                sql_count += 1
-            else:
-                dsa_count += 1
-
-        time.sleep(0.3)
 
     # Update root README
     print("\n[4/5] Updating README...")
@@ -275,17 +282,19 @@ def sync(base_path, lc_session, csrf, push=False, gh_token=None, gh_repo=None):
     if push:
         print("\nPushing to GitHub...")
         run_git(["add", "-A"], cwd=base_path)
-        if run_git(["status", "--porcelain"], cwd=base_path).stdout.strip():
+        status_out = run_git(["status", "--porcelain"], cwd=base_path).stdout.strip()
+        if status_out:
             run_git(["commit", "-m", f"Sync {dsa_count + sql_count} solutions - {datetime.now().strftime('%Y-%m-%d %H:%M')}"], cwd=base_path)
             if gh_token and gh_repo:
-                remote = f"https://{gh_token}@github.com/{gh_repo}.git"
-                run_git(["remote", "remove", "origin"], cwd=base_path)
-                run_git(["remote", "add", "origin", remote], cwd=base_path)
-                r = run_git(["push", "-u", "origin", "main", "--force"], cwd=base_path)
-                if r.returncode == 0:
-                    print("Pushed to GitHub!")
-                else:
-                    print(f"Push failed: {r.stderr.strip()}")
+                remote_url = run_git(["remote", "get-url", "origin"], cwd=base_path).stdout.strip()
+                expected_url = f"https://github.com/{gh_repo}.git"
+                if not remote_url or remote_url != expected_url:
+                    run_git(["remote", "set-url", "origin", f"https://{gh_token}@github.com/{gh_repo}.git"], cwd=base_path)
+            r = run_git(["push", "-u", "origin", "main", "--force"], cwd=base_path)
+            if r.returncode == 0:
+                print("Pushed to GitHub!")
+            else:
+                print(f"Push failed: {r.stderr.strip()}")
         else:
             print("No changes to push")
 
