@@ -6,9 +6,9 @@ Auto-synced LeetCode solutions repository.
 
 | Category | Solved |
 |----------|--------|
-| DSA | 156 |
-| SQL | 34 |
-| **Total** | **190** |
+| DSA | 141 |
+| SQL | 33 |
+| **Total** | **174** |
 
 ## Structure
 
@@ -19,4 +19,4 @@ SQL/   <- SQL / Database problems
 
 Auto-synced via GitHub Actions every 6 hours.
 
-_Last updated: 2026-09-16 02:20 UTC_
+_Last updated: 2026-09-16 10:30 UTC_
