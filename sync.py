@@ -55,6 +55,20 @@ def gql(query, variables, session, csrf_token):
     return resp.json().get("data", {})
 
 
+def verify_auth(session, csrf_token):
+    """Return (ok, username). LeetCode silently reports logged-out users as
+    anonymous rather than erroring, so an expired cookie looks like a valid
+    session until you inspect userStatus / num_solved."""
+    try:
+        d = gql("query { userStatus { username isSignedIn } }", {}, session, csrf_token)
+        st = d.get("userStatus") or {}
+        if st.get("isSignedIn") and st.get("username"):
+            return True, st["username"]
+    except Exception as e:
+        print(f"  Auth check request failed: {e}")
+    return False, ""
+
+
 def get_solved_problems(session):
     """Get ALL solved problems in ONE API call using REST endpoint."""
     r = session.get("https://leetcode.com/api/problems/all/", timeout=15)
@@ -151,7 +165,20 @@ def write_readme(fp, p, sols):
     fp.write_text("\n".join(lines), encoding="utf-8")
 
 
+def count_solutions(base):
+    """Count solution folders actually on disk, so the README reflects the
+    repository rather than only what this particular run managed to fetch."""
+    def count(cat):
+        d = base / cat
+        if not d.is_dir():
+            return 0
+        return sum(1 for p in d.iterdir() if p.is_dir() and (p / "README.md").exists())
+
+    return count("DSA"), count("SQL")
+
+
 def write_root_readme(base, dsa, sql):
+    dsa, sql = count_solutions(base)
     total = dsa + sql
     (base / "README.md").write_text(f"""# LeetCode Solutions
 
@@ -193,20 +220,39 @@ def sync(base_path, lc_session, csrf, push=False, gh_token=None, gh_repo=None):
 
     # Auth
     print("\n[1/5] Authenticating...")
-    try:
-        d = gql("query { userStatus { username } }", {}, s, csrf)
-        user = d.get("userStatus", {}).get("username", "")
-        if user:
-            print(f"  Logged in as: {user}")
-        else:
-            print("  WARNING: Could not verify login, proceeding anyway...")
-    except Exception as e:
-        print(f"  WARNING: Auth check failed ({e}), proceeding anyway...")
+    ok, user = verify_auth(s, csrf)
+    if not ok:
+        print("\n" + "!" * 60)
+        print("FATAL: LeetCode session is not authenticated.")
+        print("The LEETCODE_SESSION cookie is expired, malformed, or revoked.")
+        print("LeetCode expires these roughly every 2 weeks.")
+        print("")
+        print("Fix:")
+        print("  1. Log in at https://leetcode.com")
+        print("  2. F12 -> Application -> Cookies -> https://leetcode.com")
+        print("  3. Copy LEETCODE_SESSION and csrftoken")
+        print("  4. Update both repo secrets (Settings -> Secrets and variables -> Actions)")
+        print("")
+        print("Aborting without touching any files.")
+        print("!" * 60)
+        sys.exit(2)
+    print(f"  Logged in as: {user}")
 
     # Get ALL solved problems (1 API call)
     print("\n[2/5] Fetching solved problems...")
-    solved = get_solved_problems(s)
+    try:
+        solved = get_solved_problems(s)
+    except Exception as e:
+        print(f"\nFATAL: Could not fetch solved problems: {e}")
+        sys.exit(3)
     print(f"  Found {len(solved)} solved problems")
+
+    if not solved:
+        print("\n" + "!" * 60)
+        print("FATAL: Authenticated, but LeetCode reports 0 solved problems.")
+        print("Nothing will be written. This is safer than wiping the README to 0.")
+        print("!" * 60)
+        sys.exit(4)
 
     # Fetch details and code for each
     print("\n[3/5] Fetching solution code...")
@@ -273,11 +319,23 @@ def sync(base_path, lc_session, csrf, push=False, gh_token=None, gh_repo=None):
             print(f"    ERROR: {e}")
             continue
 
+    written = dsa_count + sql_count
+    if written == 0:
+        print("\n" + "!" * 60)
+        print(f"FATAL: Fetched {len(solved)} solved problems but wrote 0 solutions.")
+        print("Every submission fetch failed. Refusing to update the README,")
+        print("which would wipe the real progress counts to 0.")
+        print("!" * 60)
+        sys.exit(5)
+
     # Update root README
     print("\n[4/5] Updating README...")
     write_root_readme(base_path, dsa_count, sql_count)
 
-    print(f"\n[5/5] Done! DSA: {dsa_count} | SQL: {sql_count} | Total: {dsa_count + sql_count}")
+    print(f"\n[5/5] Done! DSA: {dsa_count} | SQL: {sql_count} | Total: {written}")
+
+    if written < len(solved):
+        print(f"\nNOTE: {len(solved) - written} problem(s) had no retrievable code.")
 
     if push:
         print("\nPushing to GitHub...")

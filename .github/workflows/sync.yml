@@ -41,15 +41,43 @@ jobs:
       - name: Validate secrets
         run: |
           if [ -z "$LEETCODE_SESSION" ]; then
-            echo "ERROR: LEETCODE_SESSION secret is not set"
+            echo "::error::LEETCODE_SESSION secret is not set"
             exit 1
           fi
           if [ -z "$LEETCODE_CSRF_TOKEN" ]; then
-            echo "ERROR: LEETCODE_CSRF_TOKEN secret is not set"
+            echo "::error::LEETCODE_CSRF_TOKEN secret is not set"
             exit 1
           fi
           echo "LEETCODE_SESSION: ${#LEETCODE_SESSION} chars"
           echo "LEETCODE_CSRF_TOKEN: ${#LEETCODE_CSRF_TOKEN} chars"
+        env:
+          LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
+          LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+
+      - name: Preflight auth check
+        run: |
+          python -u - <<'PY'
+          import os, sys, requests
+          LEETCODE_GRAPHQL = "https://leetcode.com/graphql"
+          csrf = os.environ["LEETCODE_CSRF_TOKEN"]
+          s = requests.Session()
+          s.cookies.set("LEETCODE_SESSION", os.environ["LEETCODE_SESSION"], domain=".leetcode.com")
+          s.cookies.set("csrftoken", csrf, domain=".leetcode.com")
+          try:
+              r = s.post(LEETCODE_GRAPHQL,
+                  json={"query": "query { userStatus { username isSignedIn } }", "variables": {}},
+                  headers={"Content-Type": "application/json", "Referer": "https://leetcode.com",
+                           "Origin": "https://leetcode.com", "x-csrftoken": csrf}, timeout=20)
+              st = (r.json().get("data") or {}).get("userStatus") or {}
+          except Exception as e:
+              print(f"::error::Auth preflight request failed: {e}")
+              sys.exit(1)
+          if not st.get("isSignedIn"):
+              print("::error::LeetCode session is EXPIRED or INVALID - cookies are not authenticating.")
+              print("::error::Update LEETCODE_SESSION and LEETCODE_CSRF_TOKEN in repo secrets.")
+              sys.exit(1)
+          print(f"Authenticated as: {st.get('username')}")
+          PY
         env:
           LEETCODE_SESSION: ${{ secrets.LEETCODE_SESSION }}
           LEETCODE_CSRF_TOKEN: ${{ secrets.LEETCODE_CSRF_TOKEN }}
